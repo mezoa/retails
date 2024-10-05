@@ -248,6 +248,39 @@ if selected == "Product Analysis":
         # Display the graph
         st.plotly_chart(fig_popular_product, use_container_width=True)
 
+# Function for state coordinates since current data set doesnt include latitude and longtitude
+def add_state_coordinates(df):
+    # Dictionary of state abbreviations and their approximate center coordinates
+    state_coords = {
+        'AL': (32.806671, -86.791130), 'AK': (61.370716, -152.404419), 'AZ': (34.168218, -111.930907),
+        'AR': (34.751927, -92.131378), 'CA': (36.778259, -119.417931), 'CO': (39.550051, -105.782067),
+        'CT': (41.603221, -73.087749), 'DE': (38.910832, -75.527670), 'FL': (27.994402, -81.760254),
+        'GA': (32.157435, -82.907123), 'HI': (19.896766, -155.582782), 'ID': (44.068202, -114.742041),
+        'IL': (40.633125, -89.398529), 'IN': (40.551217, -85.602364), 'IA': (41.878003, -93.097702),
+        'KS': (39.011902, -98.484246), 'KY': (37.839333, -84.270018), 'LA': (30.984298, -91.962333),
+        'ME': (45.253783, -69.445469), 'MD': (39.045755, -76.641271), 'MA': (42.407211, -71.382437),
+        'MI': (44.314844, -85.602364), 'MN': (46.729553, -94.685900), 'MS': (32.354668, -89.398528),
+        'MO': (37.964253, -91.831833), 'MT': (46.879682, -110.362566), 'NE': (41.492537, -99.901813),
+        'NV': (38.802610, -116.419389), 'NH': (43.193852, -71.572395), 'NJ': (40.058324, -74.405661),
+        'NM': (34.519940, -105.870090), 'NY': (43.299428, -74.217933), 'NC': (35.759573, -79.019300),
+        'ND': (47.551493, -101.002012), 'OH': (40.417287, -82.907123), 'OK': (35.007752, -97.092877),
+        'OR': (43.804133, -120.554201), 'PA': (41.203322, -77.194525), 'RI': (41.580095, -71.477429),
+        'SC': (33.836081, -81.163725), 'SD': (43.969515, -99.901813), 'TN': (35.517491, -86.580447),
+        'TX': (31.968599, -99.901813), 'UT': (39.320980, -111.093731), 'VT': (44.558803, -72.577841),
+        'VA': (37.431573, -78.656894), 'WA': (47.751074, -120.740139), 'WV': (38.597626, -80.454903),
+        'WI': (43.784440, -88.787868), 'WY': (43.075968, -107.290284)
+    }
+
+    
+    # Create a mapping of full state names to coordinates
+    state_name_to_coords = {state: coords for state, coords in zip(df['state'].unique(), [state_coords.get(state[:2].upper(), (0, 0)) for state in df['state'].unique()])}
+    
+    # Add latitude and longitude columns
+    df['latitude'] = df['state'].map(lambda x: state_name_to_coords.get(x, (0, 0))[0])
+    df['longitude'] = df['state'].map(lambda x: state_name_to_coords.get(x, (0, 0))[1])
+    
+    return df
+
 # Location Analysis Page
 if selected == "Location Analysis":
     st.title("Location Analysis")
@@ -256,31 +289,64 @@ if selected == "Location Analysis":
     region, state, city, start_date, end_date = create_filters()
     filtered_data = filter_data(region, state, city, start_date, end_date)
 
+    # Add coordinates to the filtered data
+    filtered_data = add_state_coordinates(filtered_data)
+
     # Create visuals
     if not filtered_data.empty:
-        # Heatmap for sales by state
-        if state == "All":
-            heatmap_data = filtered_data.groupby('state')['sales'].sum().reset_index()
-            fig_heatmap = px.choropleth(heatmap_data, 
-                                        locations='state', 
-                                        locationmode='USA-states', 
-                                        color='sales', 
-                                        scope='usa', 
-                                        title='Sales by State',
-                                        color_continuous_scale=px.colors.sequential.Plasma)
-        else:
-            heatmap_data = filtered_data.groupby('city')['sales'].sum().reset_index()
-            fig_heatmap = px.choropleth(heatmap_data, 
-                                        locations='city', 
-                                        locationmode='USA-states', 
-                                        color='sales', 
-                                        scope='usa', 
-                                        title=f'Sales by City in {state}',
-                                        color_continuous_scale=px.colors.sequential.Plasma)
+        # First row: State and City bar charts
+        col1, col2 = st.columns(2)
 
-        # Display the graph
-        st.plotly_chart(fig_heatmap, use_container_width=True)
+        with col1:
+            # Bar chart for sales by state
+            state_sales = filtered_data.groupby('state')['sales'].sum().reset_index()
+            state_sales = state_sales.sort_values('sales', ascending=False)
+            fig_state_bar = px.bar(state_sales, 
+                                   x='state', 
+                                   y='sales', 
+                                   title='Sales by State',
+                                   labels={'sales': 'Total Sales', 'state': 'State'},
+                                   color='sales',
+                                   color_continuous_scale=px.colors.sequential.Plasma)
+            fig_state_bar.update_layout(xaxis_tickangle=-45)
+            st.plotly_chart(fig_state_bar, use_container_width=True)
 
+        with col2:
+            # Bar chart for sales by city
+            if state != "All":
+                city_sales = filtered_data[filtered_data['state'] == state].groupby('city')['sales'].sum().reset_index()
+            else:
+                city_sales = filtered_data.groupby('city')['sales'].sum().reset_index()
+            city_sales = city_sales.sort_values('sales', ascending=False).head(10)  # Top 10 cities
+            fig_city_bar = px.bar(city_sales, 
+                                  x='city', 
+                                  y='sales', 
+                                  title=f'Top 10 Cities by Sales',
+                                  labels={'sales': 'Total Sales', 'city': 'City'},
+                                  color='sales',
+                                  color_continuous_scale=px.colors.sequential.Plasma)
+            fig_city_bar.update_layout(xaxis_tickangle=-45)
+            st.plotly_chart(fig_city_bar, use_container_width=True)
+
+        # Second row: Map
+        # Scatter plot on map
+        location_data = filtered_data.groupby(['state', 'latitude', 'longitude'])['sales'].sum().reset_index()
+        
+        fig_map = px.scatter_geo(location_data,
+                                 lat='latitude',
+                                 lon='longitude',
+                                 size='sales',
+                                 hover_name='state',
+                                 scope='usa',
+                                 title='Sales Distribution on Map',
+                                 size_max=50,
+                                 color='sales',
+                                 color_continuous_scale=px.colors.sequential.Plasma)
+        st.plotly_chart(fig_map, use_container_width=True)
+
+    else:
+        st.warning("No data available for the selected filters.")
+        
 # Data Mining Insights
 if selected == "Data Mining":
     st.title("🛠️ Data Mining Insights")
