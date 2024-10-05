@@ -4,7 +4,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from streamlit_option_menu import option_menu
-from DataMining import run_data_mining
+from DataMining import connect_to_db, customer_segmentation, sales_forecasting
 import psycopg2
 
 # Establish connection to PostgreSQL database
@@ -284,27 +284,36 @@ if selected == "Location Analysis":
 if selected == "Data Mining":
     st.title("🛠️ Data Mining Insights")
 
-    # Run data mining tasks
-    customer_data, sales_data = run_data_mining()
+    # Load data for data mining
+    df = load_data(query)
+    if df.empty:
+        st.error("Failed to load data for data mining.")
+    else:
+        # Customer Segmentation
+        st.subheader("Customer Segmentation (K-Means Clustering)")
+        try:
+            customer_data = customer_segmentation(df)
+            st.write("Customers have been segmented into 3 clusters based on their total sales and total orders.")
+            st.dataframe(customer_data)
 
-    # Step 1: Display Customer Segmentation
-    st.subheader("Customer Segmentation (K-Means Clustering)")
-    st.write("Customers have been segmented into 3 clusters based on their total sales and total orders.")
-    st.dataframe(customer_data)
+            # Visualize customer clusters
+            fig_customer_clusters = px.scatter(customer_data, x='total_sales', y='total_orders', color='Cluster', title='Customer Segments', color_discrete_sequence=px.colors.qualitative.Pastel)
+            st.plotly_chart(fig_customer_clusters, use_container_width=True)
+        except Exception as e:
+            st.error(f"Error in customer segmentation: {e}")
 
-    # Visualize customer clusters
-    fig_customer_clusters = px.scatter(customer_data, x='total_sales', y='total_orders', color='Cluster', title='Customer Segments', color_discrete_sequence=px.colors.qualitative.Pastel)
-    
-    # Step 2: Display Sales Forecasting
-    st.subheader("Sales Forecasting (Linear Regression with AdaBoost)")
-    st.write("Historical sales data and the forecast for the next 12 months.")
-    
-    # Line plot of historical sales
-    fig_sales_history = px.line(sales_data, x=sales_data.index, y='sales', title='Historical Sales', color_discrete_sequence=px.colors.qualitative.Pastel)
-    
-    # Display the graphs
-    st.plotly_chart(fig_customer_clusters, use_container_width=True)
-    st.plotly_chart(fig_sales_history, use_container_width=True)
+        # Sales Forecasting
+        st.subheader("Sales Forecasting (Random Forest)")
+        try:
+            sales_model, forecast_data = sales_forecasting(df)
+            st.write("Historical sales data and the forecast for the next 12 months.")
+            st.dataframe(forecast_data)
+
+            # Line plot of historical and future sales
+            fig_sales_forecast = px.line(forecast_data, x='date', y=['Actual Sales', 'Predicted Sales'], title='Sales Forecast', labels={'value': 'Sales', 'variable': 'Type'}, color_discrete_sequence=px.colors.qualitative.Pastel)
+            st.plotly_chart(fig_sales_forecast, use_container_width=True)
+        except Exception as e:
+            st.error(f"Error in sales forecasting: {e}")
 
 # Footer
 st.markdown("---")

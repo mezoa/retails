@@ -1,150 +1,240 @@
-# DataMining.py
+import streamlit as st
 import pandas as pd
+import numpy as np
 import psycopg2
 from sklearn.cluster import KMeans
-from sklearn.linear_model import LinearRegression
 from sklearn.preprocessing import StandardScaler
-from sklearn.multioutput import MultiOutputRegressor
-from sklearn.ensemble import AdaBoostRegressor
-from sklearn.metrics import r2_score
-from statsmodels.tsa.deterministic import DeterministicProcess, CalendarFourier
+from sklearn.linear_model import LinearRegression
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
-import streamlit as st  # Import Streamlit
+import seaborn as sns
 
-# Function to connect to PostgreSQL database
-def create_connection():
+st.set_page_config(page_title="DM")
+
+# Database connection function
+def connect_to_db():
     try:
         conn = psycopg2.connect(
             dbname="Retail",
             user="postgres",
             password="admin",
             host="localhost",
-            port="5423"
+            port="5432"
         )
         return conn
     except Exception as e:
+        st.error(f"Error connecting to the database: {e}")
         return None
 
-# Load data from the database
-def load_data(query):
-    conn = create_connection()
-    if conn:
-        try:
-            data = pd.read_sql(query, conn)
-            return data
-        finally:
-            conn.close()
-    return pd.DataFrame()
+# Load data from database
+def load_data():
+    conn = connect_to_db()
+    if conn is None:
+        return None
 
-# Step 1: Customer Segmentation using K-Means Clustering
-def customer_segmentation():
-    # Query customer data from the database
     query = """
-    SELECT dc.customer_id, SUM(fs.sales) as total_sales, COUNT(fs.order_id) as total_orders
-    FROM fact_sales fs
-    JOIN dim_customer dc ON fs.customer_id = dc.customer_id
-    GROUP BY dc.customer_id
+    SELECT c.customer_id, c.segment, f.sales, t.year, t.month
+    FROM fact_sales f
+    JOIN dim_customer c ON f.customer_id = c.customer_id
+    JOIN dim_time t ON f.time_id = t.time_id
     """
-    customer_data = load_data(query)
+    
+    df = pd.read_sql_query(query, conn)
+    conn.close()
+    return df
 
-    # Preprocessing: Normalize the data
+# Customer Segmentation using K-means clustering
+def customer_segmentation(df):
+    # Aggregate sales and order count by customer
+    customer_data = df.groupby('customer_id').agg({
+        'sales': 'sum',
+        'segment': 'count'  # This gives us the order count
+    }).reset_index()
+    customer_data.columns = ['customer_id', 'total_sales', 'total_orders']
+    
+    # Remove any potential duplicates
+    customer_data = customer_data.drop_duplicates(subset='customer_id')
+    
+    # Normalize the data
     scaler = StandardScaler()
-    customer_data_scaled = scaler.fit_transform(customer_data[['total_sales', 'total_orders']])
-
-    # Apply K-Means Clustering
+    normalized_data = scaler.fit_transform(customer_data[['total_sales', 'total_orders']])
+    
+    # Perform K-means clustering
     kmeans = KMeans(n_clusters=3, random_state=42)
-    customer_data['Cluster'] = kmeans.fit_predict(customer_data_scaled)
-
+    customer_data['Cluster'] = kmeans.fit_predict(normalized_data)
+    
+    # Set up the plot style
+    plt.style.use('dark_background')
+    fig, ax = plt.subplots(figsize=(12, 8))
+    
+    # Create a color palette (using blues to match the image)
+    palette = sns.color_palette("Blues", as_cmap=True)
+    
+    # Visualize the clusters
+    scatter = ax.scatter(customer_data['total_sales'], 
+                         customer_data['total_orders'], 
+                         c=customer_data['Cluster'],
+                         cmap=palette,
+                         alpha=0.7,
+                         s=50)
+    
+    # Customize the plot
+    ax.set_xlabel('Total Sales', fontsize=12)
+    ax.set_ylabel('Total Orders', fontsize=12)
+    ax.set_title('Customer Segments', fontsize=16)
+    ax.grid(True, linestyle='--', alpha=0.3)
+    
+    # Add a color bar
+    cbar = plt.colorbar(scatter)
+    cbar.set_label('Cluster', fontsize=12)
+    
+    # Remove top and right spines
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    
+    # Adjust layout and display the plot
+    plt.tight_layout()
+    st.pyplot(fig)
+    
     return customer_data
-
-# Function to forecast sales for additional features
-def additional_features_forecast(additional_feature, sales_data, X, dp):
-    sales_data['month'] = sales_data.index.to_period('M')
-    df_sc = sales_data.groupby(['month'] + additional_feature)['sales'].sum().reset_index()
-    df_sc = df_sc.set_index(['month'] + additional_feature).unstack(additional_feature).fillna(0)
-    y = df_sc.loc[:, 'sales']
-
-    # Align the indices of X and y
-    y = y.reindex(X.index, method='ffill').fillna(0)
-
-    X_train = X.loc[:'2017-12']
-    X_test = X.loc['2018-01':]
-    y_train = y.loc[:'2017-12']
-    y_test = y.loc['2018-01':]
-
-    ada = AdaBoostRegressor(n_estimators=200, estimator=LinearRegression(), loss='exponential', learning_rate=0.0001, random_state=21)
-    model = MultiOutputRegressor(ada)
+# Sales Forecasting using Linear Regression
+def sales_forecasting(df):
+    # Aggregate sales by year and month
+    monthly_sales = df.groupby(['year', 'month'])['sales'].sum().reset_index()
+    monthly_sales['date'] = pd.to_datetime(monthly_sales[['year', 'month']].assign(day=1))
+    monthly_sales = monthly_sales.sort_values('date')
+    
+    # Create time-based features
+    monthly_sales['month'] = monthly_sales['date'].dt.month
+    monthly_sales['year'] = monthly_sales['date'].dt.year
+    monthly_sales['day_of_year'] = monthly_sales['date'].dt.dayofyear
+    monthly_sales['quarter'] = monthly_sales['date'].dt.quarter
+    
+    # Create features (X) and target (y)
+    features = ['month', 'year', 'day_of_year', 'quarter']
+    X = monthly_sales[features]
+    y = monthly_sales['sales'].values
+    
+    # Split the data
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+    
+    # Train the model
+    model = RandomForestRegressor(n_estimators=100, random_state=42)
     model.fit(X_train, y_train)
-
-    y_fit = pd.DataFrame(model.predict(X_train), index=X_train.index.to_timestamp(), columns=y.columns)
-    y_pred = pd.DataFrame(model.predict(X_test), index=X_test.index.to_timestamp(), columns=y.columns)
-    y_forecast = pd.DataFrame(model.predict(dp.out_of_sample(steps=12)), index=dp.out_of_sample(steps=12).index, columns=y.columns)
-
-    fig, axes = plt.subplots(len(y.columns) + 1, 1, figsize=(12, (len(y.columns) + 1) * 2), sharex=True, constrained_layout=True)
-    fig.suptitle(f'Sales Forecast for Each {additional_feature[0]}', fontsize=20, color='blue')
-
-    for ax, feature in zip(axes, y.columns):
-        ax.plot(y.index.to_timestamp(), y[feature], color="0.5", linestyle='dashed')
-        ax.plot(y_fit[feature])
-        ax.plot(y_pred[feature])
-        ax.plot(y_forecast[feature])
-        ax.set_title(f'{feature}, test accuracy: {r2_score(y_test[feature], y_pred[feature]):.2f}', fontsize=10)
-
-    axes[-1].plot(y.index.to_timestamp(), y.sum(axis=1), color="0.5", linestyle='dashed')
-    axes[-1].plot(y_fit.sum(axis=1))
-    axes[-1].plot(y_pred.sum(axis=1))
-    axes[-1].plot(y_forecast.sum(axis=1))
-    axes[-1].set_title(f'Sum of all {additional_feature[0]}, test accuracy: {r2_score(y_test.sum(axis=1), y_pred.sum(axis=1)):.2f}', fontsize=12, color='green')
     
-    st.pyplot(fig)  # Use Streamlit to display the plot
-
-# Step 2: Sales Forecasting using Linear Regression with AdaBoost
-def sales_forecasting():
-    # Query sales data by time
-    query = """
-    SELECT dt.order_date, fs.sales, dp.category, dp.sub_category, dc.segment, dc.region, dc.state, dc.city, fs.ship_mode
-    FROM fact_sales fs
-    JOIN dim_time dt ON fs.time_id = dt.time_id
-    JOIN dim_product dp ON fs.product_id = dp.product_id
-    JOIN dim_customer dc ON fs.customer_id = dc.customer_id
-    ORDER BY dt.order_date
-    """
-    sales_data = load_data(query)
-
-    # Preprocessing: Convert order_date to datetime and set as index
-    sales_data['order_date'] = pd.to_datetime(sales_data['order_date'])
-    sales_data.set_index('order_date', inplace=True)
-
-    # Remove duplicate entries
-    sales_data = sales_data[~sales_data.index.duplicated(keep='first')]
-
-    sales_data = sales_data.asfreq('D')  # Set frequency to daily
-
-    # Deterministic Process for time series
-    fourier = CalendarFourier(freq='ME', order=4)  # Use 'ME' instead of 'M'
-    dp = DeterministicProcess(
-        index=sales_data.index.to_period('M'),  # Convert index to monthly period
-        constant=True,
-        order=2,
-        additional_terms=[fourier],
-        seasonal=True,
-        drop=True,
-    )
-    X = dp.in_sample()
-
-    # Forecast for each feature
-    features = ['category', 'segment', 'region', 'sub_category', 'state', 'city', 'ship_mode']
-    for feature in features:
-        additional_features_forecast([feature], sales_data, X, dp)
-
-    return sales_data
-
-# Main function to run data mining tasks and return results
-def run_data_mining():
-    # Step 1: Run Customer Segmentation
-    customer_data = customer_segmentation()
+    # Make predictions
+    y_pred = model.predict(X)
     
-    # Step 2: Run Sales Forecasting
-    sales_data = sales_forecasting()
+    # Create future dates for forecasting
+    last_date = monthly_sales['date'].max()
+    future_dates = pd.date_range(start=last_date + pd.DateOffset(months=1), periods=12, freq='M')
+    future_X = pd.DataFrame({
+        'month': future_dates.month,
+        'year': future_dates.year,
+        'day_of_year': future_dates.dayofyear,
+        'quarter': future_dates.quarter
+    })
+    future_pred = model.predict(future_X)
     
-    return customer_data, sales_data
+    # Prepare data for plotting
+    plot_data = pd.DataFrame({
+        'date': pd.concat([monthly_sales['date'], pd.Series(future_dates)]),
+        'Actual Sales': pd.concat([pd.Series(y), pd.Series([np.nan] * len(future_dates))]),
+        'Predicted Sales': pd.concat([pd.Series(y_pred), pd.Series(future_pred)])
+    })
+    
+    # Create the plot
+    plt.style.use('dark_background')
+    fig, ax = plt.subplots(figsize=(12, 6))
+    
+    # Create a color palette (using blues to match the customer segmentation)
+    palette = sns.color_palette("Blues", n_colors=2)
+    
+    ax.plot(plot_data['date'], plot_data['Actual Sales'], label='Actual Sales', color=palette[1])
+    ax.plot(plot_data['date'], plot_data['Predicted Sales'], label='Predicted Sales', color=palette[0], linestyle='--')
+    
+    # Customize the plot
+    ax.set_xlabel('Month', fontsize=12)
+    ax.set_ylabel('Sales', fontsize=12)
+    ax.set_title('Sales Forecast - Random Forest', fontsize=16)
+    ax.legend(fontsize=10)
+    ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.3)
+    
+    # Remove top and right spines
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    
+    # Format x-axis to show dates nicely
+    plt.gcf().autofmt_xdate()
+    
+    # Adjust layout
+    plt.tight_layout()
+    
+    # Show the plot in Streamlit
+    st.pyplot(fig)
+    
+    return model, plot_data
+
+# Streamlit app
+def main():
+    st.title("Retail Data Mining")
+    
+    # Load data
+    df = load_data()
+    if df is None or df.empty:
+        st.error("Failed to load data or the dataset is empty. Please check your database connection and query.")
+        return
+    
+    st.header("Customer Segmentation")
+    try:
+        segmented_customers = customer_segmentation(df)
+        st.write("Customer segments based on total sales:")
+        st.write(segmented_customers)
+    except Exception as e:
+        st.error(f"Error in customer segmentation: {e}")
+    
+    st.header("Sales Forecasting")
+    try:
+        sales_model, forecast_data = sales_forecasting(df)
+        st.write("Random Forest Model for Sales Forecasting:")
+        st.write("Forecast data:")
+        st.write(forecast_data)
+        
+        # Display feature importances
+        feature_importance = pd.DataFrame({
+            'feature': ['month', 'year', 'day_of_year', 'quarter'],
+            'importance': sales_model.feature_importances_
+        }).sort_values('importance', ascending=False)
+        st.write("Feature Importances:")
+        st.write(feature_importance)
+        
+    except Exception as e:
+        st.error(f"Error in sales forecasting: {e}")
+    
+    # ... (rest of the code remains the same)    
+    st.header("Insights and Value")
+    st.write("""
+    1. Customer Segmentation Insights:
+       - We've identified three distinct customer segments based on their total sales.
+       - This segmentation can help in targeted marketing and personalized customer service.
+       - High-value customers (top cluster) should be given priority and special offers to maintain their loyalty.
+       - Mid-value customers have potential for growth and could be targeted with upselling strategies.
+       - Low-value customers might benefit from retention campaigns or special promotions to increase their engagement.
+
+    2. Sales Forecasting Insights:
+       - The linear regression model provides a simple trend of sales over time.
+       - This forecast can help in inventory management and resource allocation.
+       - Upward trends suggest potential for expansion, while downward trends may indicate a need for new marketing strategies.
+       - Seasonal patterns, if any, can inform when to run promotions or adjust staffing levels.
+
+    Value to the Retail Store:
+    - Improved customer relationship management through targeted strategies for each segment.
+    - Better inventory management and financial planning based on sales forecasts.
+    - Data-driven decision making for marketing campaigns and resource allocation.
+    - Potential for increased customer satisfaction and loyalty through personalized approaches.
+    - Enhanced ability to identify and capitalize on sales trends and patterns.
+    """)
+
+if __name__ == "__main__":
+    main()
