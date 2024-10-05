@@ -7,6 +7,9 @@ from streamlit_option_menu import option_menu
 from DataMining import connect_to_db, customer_segmentation, sales_forecasting
 import psycopg2
 
+# Set Page Configuration
+st.set_page_config(page_title="Superstore Data Analysis", layout="wide")
+
 # Establish connection to PostgreSQL database
 def create_connection():
     try:
@@ -60,8 +63,6 @@ if 'order_date' in data.columns:
 if 'ship_date' in data.columns:
     data['ship_date'] = pd.to_datetime(data['ship_date'])
 
-# Set Page Configuration
-st.set_page_config(page_title="Superstore Data Analysis", layout="wide")
 
 # Sidebar Navigation
 with st.sidebar:
@@ -298,7 +299,11 @@ if selected == "Data Mining":
 
             # Visualize customer clusters
             fig_customer_clusters = px.scatter(customer_data, x='total_sales', y='total_orders', color='Cluster', title='Customer Segments', color_discrete_sequence=px.colors.qualitative.Pastel)
-            st.plotly_chart(fig_customer_clusters, use_container_width=True)
+            
+            # Organize the customer clusters graph
+            col1, col2 = st.columns(2)
+            with col1:
+                st.plotly_chart(fig_customer_clusters, use_container_width=True)
         except Exception as e:
             st.error(f"Error in customer segmentation: {e}")
 
@@ -311,10 +316,12 @@ if selected == "Data Mining":
 
             # Line plot of historical and future sales
             fig_sales_forecast = px.line(forecast_data, x='date', y=['Actual Sales', 'Predicted Sales'], title='Sales Forecast', labels={'value': 'Sales', 'variable': 'Type'}, color_discrete_sequence=px.colors.qualitative.Pastel)
-            st.plotly_chart(fig_sales_forecast, use_container_width=True)
+            
+            # Organize the sales forecast graph
+            with col2:
+                st.plotly_chart(fig_sales_forecast, use_container_width=True)
         except Exception as e:
             st.error(f"Error in sales forecasting: {e}")
-
 # Footer
 st.markdown("---")
 st.write("Developed by A-Line Business Intelligence Team")

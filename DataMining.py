@@ -10,8 +10,6 @@ from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-st.set_page_config(page_title="DM")
-
 # Database connection function
 def connect_to_db():
     try:
@@ -20,7 +18,7 @@ def connect_to_db():
             user="postgres",
             password="admin",
             host="localhost",
-            port="5432"
+            port="5423"
         )
         return conn
     except Exception as e:
