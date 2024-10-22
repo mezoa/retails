@@ -4,7 +4,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from streamlit_option_menu import option_menu
-from DataMining import connect_to_db, customer_segmentation, sales_forecasting
+from DataMining import connect_to_db, customer_segmentation, sales_forecasting, sales_forecasting_linear_regression
 import psycopg2
 
 # Set Page Configuration
@@ -351,43 +351,94 @@ if selected == "Location Analysis":
 if selected == "Data Mining":
     st.title("🛠️ Data Mining Insights")
 
+    # Dropdown for selecting the data mining technique
+    technique = st.selectbox("Select a technique:", ["Customer Segmentation", "Sales Forecasting (Random Forest)", "Sales Forecasting (Linear Regression)"])
+
     # Load data for data mining
     df = load_data(query)
     if df.empty:
         st.error("Failed to load data for data mining.")
     else:
-        # Customer Segmentation
-        st.subheader("Customer Segmentation (K-Means Clustering)")
-        try:
-            customer_data = customer_segmentation(df)
-            st.write("Customers have been segmented into 3 clusters based on their total sales and total orders.")
-            st.dataframe(customer_data)
+        if technique == "Customer Segmentation":
+            st.subheader("Customer Segmentation (K-Means Clustering)")
+            try:
+                customer_data = customer_segmentation(df)
+                st.write("Customers have been segmented into 3 clusters based on their total sales and total orders.")
+                
+                # Visualize customer clusters
+                fig_customer_clusters = px.scatter(customer_data, x='total_sales', y='total_orders', color='Cluster', title='Customer Segments', color_discrete_sequence=px.colors.qualitative.Pastel)
+                
+                # Display the customer clusters graph and table
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.plotly_chart(fig_customer_clusters, use_container_width=True)
+                with col2:
+                    st.dataframe(customer_data, height=400)
+                
+                # Explanation
+                st.markdown("""
+                **Customer Segmentation Insights:**
+                - The scatter plot shows the distribution of customers across three clusters based on their total sales and total orders.
+                - Each point represents a customer, with the x-axis showing total sales and the y-axis showing total orders.
+                - The different colors represent different clusters, helping to identify groups of customers with similar purchasing behaviors.
+                - The table on the right provides detailed information about each customer, including their cluster assignment.
+                """)
+            except Exception as e:
+                st.error(f"Error in customer segmentation: {e}")
 
-            # Visualize customer clusters
-            fig_customer_clusters = px.scatter(customer_data, x='total_sales', y='total_orders', color='Cluster', title='Customer Segments', color_discrete_sequence=px.colors.qualitative.Pastel)
-            
-            # Organize the customer clusters graph
-            col1, col2 = st.columns(2)
-            with col1:
-                st.plotly_chart(fig_customer_clusters, use_container_width=True)
-        except Exception as e:
-            st.error(f"Error in customer segmentation: {e}")
+        elif technique == "Sales Forecasting (Random Forest)":
+            st.subheader("Sales Forecasting (Random Forest)")
+            try:
+                sales_model_rf, forecast_data_rf = sales_forecasting(df)
+                st.write("Historical sales data and the forecast for the next 12 months using Random Forest.")
+                
+                # Line plot of historical and future sales
+                fig_sales_forecast_rf = px.line(forecast_data_rf, x='date', y=['Actual Sales', 'Predicted Sales'], title='Sales Forecast (Random Forest)', labels={'value': 'Sales', 'variable': 'Type'}, color_discrete_sequence=px.colors.qualitative.Pastel)
+                
+                # Display the sales forecast graph and table
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.dataframe(forecast_data_rf, height=400)
+                with col2:
+                    st.plotly_chart(fig_sales_forecast_rf, use_container_width=True)
+                
+                # Explanation
+                st.markdown("""
+                **Sales Forecasting (Random Forest) Insights:**
+                - The line plot shows historical sales data (Actual Sales) and the forecasted sales for the next 12 months (Predicted Sales) using the Random Forest model.
+                - The x-axis represents the date, while the y-axis represents the sales amount.
+                - The table on the left provides detailed forecast data, including both actual and predicted sales values.
+                - This forecast helps in understanding future sales trends and making informed business decisions.
+                """)
+            except Exception as e:
+                st.error(f"Error in sales forecasting: {e}")
 
-        # Sales Forecasting
-        st.subheader("Sales Forecasting (Random Forest)")
-        try:
-            sales_model, forecast_data = sales_forecasting(df)
-            st.write("Historical sales data and the forecast for the next 12 months.")
-            st.dataframe(forecast_data)
-
-            # Line plot of historical and future sales
-            fig_sales_forecast = px.line(forecast_data, x='date', y=['Actual Sales', 'Predicted Sales'], title='Sales Forecast', labels={'value': 'Sales', 'variable': 'Type'}, color_discrete_sequence=px.colors.qualitative.Pastel)
-            
-            # Organize the sales forecast graph
-            with col2:
-                st.plotly_chart(fig_sales_forecast, use_container_width=True)
-        except Exception as e:
-            st.error(f"Error in sales forecasting: {e}")
+        elif technique == "Sales Forecasting (Linear Regression)":
+            st.subheader("Sales Forecasting (Linear Regression)")
+            try:
+                sales_model_lr, forecast_data_lr = sales_forecasting_linear_regression(df)
+                st.write("Historical sales data and the forecast for the next 12 months using Linear Regression.")
+                
+                # Line plot of historical and future sales
+                fig_sales_forecast_lr = px.line(forecast_data_lr, x='date', y=['Actual Sales', 'Predicted Sales'], title='Sales Forecast (Linear Regression)', labels={'value': 'Sales', 'variable': 'Type'}, color_discrete_sequence=px.colors.qualitative.Pastel)
+                
+                # Display the sales forecast graph and table
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.plotly_chart(fig_sales_forecast_lr, use_container_width=True)
+                with col2:
+                    st.dataframe(forecast_data_lr, height=400)
+                
+                # Explanation
+                st.markdown("""
+                **Sales Forecasting (Linear Regression) Insights:**
+                - The line plot shows historical sales data (Actual Sales) and the forecasted sales for the next 12 months (Predicted Sales) using the Linear Regression model.
+                - The x-axis represents the date, while the y-axis represents the sales amount.
+                - The table on the right provides detailed forecast data, including both actual and predicted sales values.
+                - This forecast helps in understanding future sales trends and making informed business decisions.
+                """)
+            except Exception as e:
+                st.error(f"Error in sales forecasting: {e}")
 # Footer
 st.markdown("---")
 st.write("Developed by A-Line Business Intelligence Team")
