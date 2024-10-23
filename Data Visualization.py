@@ -54,8 +54,8 @@ JOIN dim_time dt ON fs.time_id = dt.time_id
 data = load_data(query)
 
 # Debugging: Check the DataFrame's columns
-if not data.empty:
-    print("DataFrame columns:", data.columns.tolist())  # Output the columns to verify
+# if not data.empty:
+#    print("DataFrame columns:", data.columns.tolist())  # Output the columns to verify
 
 # Convert date columns to datetime using the correct names from the DataFrame
 if 'order_date' in data.columns:
@@ -158,9 +158,14 @@ if selected == "Home":
     col1, col2 = st.columns(2)
     with col1:
         st.plotly_chart(fig_category, use_container_width=True)
+        st.write("**Sales by Category**: This bar chart shows the total sales for each product category. It helps identify which categories are performing well.")
+        
         st.plotly_chart(fig_region, use_container_width=True)
+        st.write("**Sales Distribution by Region**: This pie chart illustrates the distribution of sales across different regions. It helps understand regional performance.")
+        
     with col2:
         st.plotly_chart(fig_top_products, use_container_width=True)
+        st.write("**Top 10 Selling Products**: This bar chart highlights the top 10 products by sales. It helps identify the most popular products.")
 
 # Data Overview Page
 if selected == "Data Overview":
@@ -176,8 +181,9 @@ if selected == "Data Overview":
 
 # Sales Trends Page
 if selected == "Sales Trends":
-    st.title("Sales Trends")
-    
+    st.title("📈 Sales Trends")
+    st.write("Analyze the sales trends over time and across different categories and regions.")
+
     # Filters
     region, state, city, start_date, end_date = create_filters()
     filtered_data = filter_data(region, state, city, start_date, end_date)
@@ -200,9 +206,14 @@ if selected == "Sales Trends":
         col1, col2 = st.columns(2)
         with col1:
             st.plotly_chart(fig_category, use_container_width=True)
+            st.write("**Sales by Category**: This bar chart shows the total sales for each product category. It helps identify which categories are performing well.")
+            
             st.plotly_chart(fig_region, use_container_width=True)
+            st.write("**Sales Distribution by Region**: This pie chart illustrates the distribution of sales across different regions. It helps understand regional performance.")
+            
         with col2:
             st.plotly_chart(fig_trends, use_container_width=True)
+            st.write("**Sales Over Time**: This line chart shows the trend of sales over time. It helps identify seasonal patterns and overall sales growth.")
 
 # Category Analysis Page
 if selected == "Category Analysis":
@@ -226,13 +237,17 @@ if selected == "Category Analysis":
         col1, col2 = st.columns(2)
         with col1:
             st.plotly_chart(fig_category_analysis, use_container_width=True)
+            st.write("**Sales by Category**: This bar chart shows the total sales for each product category. It helps identify which categories are performing well.")
+            
         with col2:
             st.plotly_chart(fig_sub_category_analysis, use_container_width=True)
+            st.write("**Sales by Sub-Category**: This bar chart shows the total sales for each sub-category. It helps identify which sub-categories are performing well within each category.")
 
 # Product Analysis Page
 if selected == "Product Analysis":
     st.title("Product Analysis")
-    
+    st.write("Analyze the performance of products across different cities and regions. This section provides insights into the most popular products in each city and the top-selling products overall.")
+
     # Filters
     region, state, city, start_date, end_date = create_filters()
     filtered_data = filter_data(region, state, city, start_date, end_date)
@@ -242,11 +257,32 @@ if selected == "Product Analysis":
         # Most popular product in each city
         popular_product = filtered_data.groupby(['city', 'product_name'])['sales'].sum().reset_index()
         popular_product = popular_product.sort_values(['city', 'sales'], ascending=[True, False]).drop_duplicates('city')
-
         fig_popular_product = px.bar(popular_product, x='city', y='sales', color='product_name', title='Most Popular Product in Each City', labels={'sales': 'Total Sales'}, color_discrete_sequence=px.colors.qualitative.Pastel)
 
-        # Display the graph
+        # Top 10 products by sales
+        top_products = filtered_data.groupby('product_name')['sales'].sum().reset_index().sort_values(by='sales', ascending=False).head(10)
+        fig_top_products = px.bar(top_products, x='product_name', y='sales', title='Top 10 Products by Sales', labels={'sales': 'Total Sales'}, color='product_name', color_discrete_sequence=px.colors.qualitative.Pastel)
+
+        # Sales by product category
+        category_sales = filtered_data.groupby('category')['sales'].sum().reset_index()
+        fig_category_sales = px.pie(category_sales, values='sales', names='category', title='Sales Distribution by Category', color='category', color_discrete_sequence=px.colors.qualitative.Pastel)
+
+        # Display the graphs with visual separation
         st.plotly_chart(fig_popular_product, use_container_width=True)
+        st.markdown("<h3 style='text-align: left;'>Most Popular Product in Each City</h3>", unsafe_allow_html=True)
+        st.write("This bar chart shows the most popular product in each city based on total sales. It helps identify which products are favored in different cities.")
+        
+        st.markdown("---")  # Horizontal line for separation
+        
+        st.plotly_chart(fig_top_products, use_container_width=True)
+        st.markdown("<h3 style='text-align: left;'>Top 10 Products by Sales</h3>", unsafe_allow_html=True)
+        st.write("This bar chart highlights the top 10 products by total sales. It helps identify the best-selling products overall.")
+        
+        st.markdown("---")  # Horizontal line for separation
+        
+        st.plotly_chart(fig_category_sales, use_container_width=True)
+        st.markdown("<h3 style='text-align: left;'>Sales Distribution by Category</h3>", unsafe_allow_html=True)
+        st.write("This pie chart illustrates the distribution of sales across different product categories. It helps understand the contribution of each category to the total sales.")
 
 # Function for state coordinates since current data set doesnt include latitude and longtitude
 def add_state_coordinates(df):
@@ -271,7 +307,6 @@ def add_state_coordinates(df):
         'WI': (43.784440, -88.787868), 'WY': (43.075968, -107.290284)
     }
 
-    
     # Create a mapping of full state names to coordinates
     state_name_to_coords = {state: coords for state, coords in zip(df['state'].unique(), [state_coords.get(state[:2].upper(), (0, 0)) for state in df['state'].unique()])}
     
@@ -284,7 +319,8 @@ def add_state_coordinates(df):
 # Location Analysis Page
 if selected == "Location Analysis":
     st.title("Location Analysis")
-    
+    st.write("Analyze the sales performance across different states and cities. This section provides insights into the sales distribution by state and city, as well as a geographical representation of sales.")
+
     # Filters
     region, state, city, start_date, end_date = create_filters()
     filtered_data = filter_data(region, state, city, start_date, end_date)
@@ -310,6 +346,8 @@ if selected == "Location Analysis":
                                    color_continuous_scale=px.colors.sequential.Plasma)
             fig_state_bar.update_layout(xaxis_tickangle=-45)
             st.plotly_chart(fig_state_bar, use_container_width=True)
+            st.markdown("<h3 style='text-align: left;'>Sales by State</h3>", unsafe_allow_html=True)
+            st.write("This bar chart shows the total sales for each state. It helps identify which states are generating the most revenue.")
 
         with col2:
             # Bar chart for sales by city
@@ -327,6 +365,10 @@ if selected == "Location Analysis":
                                   color_continuous_scale=px.colors.sequential.Plasma)
             fig_city_bar.update_layout(xaxis_tickangle=-45)
             st.plotly_chart(fig_city_bar, use_container_width=True)
+            st.markdown("<h3 style='text-align: left;'>Top 10 Cities by Sales</h3>", unsafe_allow_html=True)
+            st.write("This bar chart highlights the top 10 cities by total sales. It helps identify the cities with the highest sales performance.")
+
+        st.markdown("---")  # Horizontal line for separation
 
         # Second row: Map
         # Scatter plot on map
@@ -343,6 +385,8 @@ if selected == "Location Analysis":
                                  color='sales',
                                  color_continuous_scale=px.colors.sequential.Plasma)
         st.plotly_chart(fig_map, use_container_width=True)
+        st.markdown("<h3 style='text-align: left;'>Sales Distribution on Map</h3>", unsafe_allow_html=True)
+        st.write("This scatter plot on the map shows the distribution of sales across different states. The size of the bubbles represents the total sales in each state, providing a geographical overview of sales performance.")
 
     else:
         st.warning("No data available for the selected filters.")
